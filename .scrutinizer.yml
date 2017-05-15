@@ -1,0 +1,78 @@
+tools:
+    php_sim: true
+    php_pdepend: true
+    php_analyzer: true
+    # comment line below if this is paid scrutinizer project
+    #external_code_coverage: true
+    php_cs_fixer:
+            config: { level: psr2 } # or psr1 if you would just like to get fixes for PSR1
+    php_code_sniffer:
+            config:
+                standard: "PSR2"
+
+filter:
+  excluded_paths:
+    - 'src/SystemBundle/*'
+    - 'www/*'
+    - 'app/*'
+    - 'ci/*'
+
+
+build:
+  project_setup:
+    before:
+      - command: 'phantomjs --webdriver=8643'
+        background: true
+  dependencies:
+    override:
+       - mysql -uroot -e 'CREATE DATABASE omnivalor_test'
+       - mysql -uroot -e "CREATE USER 'test'@'localhost' IDENTIFIED BY 'test'";
+       - mysql -uroot -e "GRANT ALL PRIVILEGES ON *.* TO 'test'@'localhost' WITH GRANT OPTION";
+       #- gunzip dump.sql.gz
+       - mysql -uroot omnivalor_test < ci/assets/dump.sql
+       - cp app/config/parameters_omnivalor_test.yml app/config/parameters.yml
+       - composer install --no-interaction --prefer-dist
+       - php app/console --no-interaction doctrine:migrations:migrate
+       - php app/console --no-interaction assets:install www --symlink
+       - php app/console assetic:dump --env=test --no-debug
+       #- rm -rf app/cache/dev; truegi
+       #- rm -rf app/cache/prod; true
+       #- mysql -uroot -e 'DROP DATABASE omnivalor_test'
+       #- php app/console doctrine:database:create
+       #- php app/console doctrine:schema:create
+
+
+  environment:
+      php:
+        version: 7.0.8
+      selenium: true
+      mysql: 5.6
+      variables:
+          APPLICATION_ENV: test
+      hosts:
+        # change to your actual testing domain
+        test.local: '127.0.0.1'
+        tests.omnivalor.com: '127.0.0.1'
+      apache2:
+        modules: ['rewrite']
+        sites:
+          test:
+            web_root: 'www/'
+            # change to your actual testing domain
+            host: 'test.local'
+          # Google Plus domain
+          google:
+            web_root: 'www/'
+            host: 'tests.omnivalor.com'
+
+  tests:
+      override:
+        - 'vendor/bin/behat -p scrutinizer'
+        - 'mv Fail.*.jpg ~/artifacts/ 2>/dev/null ; true'
+        #- 'vendor/bin/phpunit --coverage-clover=coverage.clover --coverage-text'
+
+  deployment:
+          -
+              branch: dev
+              commands:
+                  - 'vendor/bin/dep deploy test'
